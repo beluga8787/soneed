@@ -1,0 +1,125 @@
+/* МИШУТКА · Тихая Падь — стили */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:Georgia,'Times New Roman',serif;color:#cfc8b8;user-select:none}
+#game{position:fixed;inset:0;display:block}
+.hidden{display:none!important}
+
+/* ---------- МЕНЮ ---------- */
+#menu{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ background:radial-gradient(ellipse at 50% 30%,#0d1116 0%,#030407 70%);text-align:center}
+.fogLayer{position:absolute;inset:-50%;background:
+ radial-gradient(circle at 20% 40%,rgba(90,110,120,.07),transparent 40%),
+ radial-gradient(circle at 80% 60%,rgba(90,110,120,.06),transparent 45%),
+ radial-gradient(circle at 50% 80%,rgba(120,60,60,.05),transparent 40%);
+ animation:fogDrift 40s linear infinite;pointer-events:none}
+@keyframes fogDrift{from{transform:translateX(-8%) rotate(.5deg)}50%{transform:translateX(8%) rotate(-.5deg)}to{transform:translateX(-8%)}}
+#menu h1{font-size:min(12vw,110px);letter-spacing:.18em;color:#b9ad92;text-shadow:0 0 30px rgba(120,20,20,.55);animation:flicker 4s infinite}
+.glitch{position:relative}
+.glitch::before,.glitch::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;opacity:.5}
+.glitch::before{color:#7a1414;transform:translate(3px,-2px);clip-path:inset(20% 0 40% 0);animation:gl1 3.1s infinite linear alternate}
+.glitch::after{color:#2a4a5a;transform:translate(-3px,2px);clip-path:inset(60% 0 5% 0);animation:gl2 2.3s infinite linear alternate}
+@keyframes gl1{0%{clip-path:inset(10% 0 80% 0)}50%{clip-path:inset(50% 0 10% 0)}100%{clip-path:inset(80% 0 2% 0)}}
+@keyframes gl2{0%{clip-path:inset(70% 0 5% 0)}50%{clip-path:inset(5% 0 70% 0)}100%{clip-path:inset(40% 0 30% 0)}}
+@keyframes flicker{0%,100%{opacity:1}92%{opacity:1}93%{opacity:.4}94%{opacity:1}97%{opacity:.6}98%{opacity:1}}
+.subtitle{margin:10px 0 26px;letter-spacing:.35em;color:#6f6a58;font-size:14px}
+.story{max-width:640px;line-height:1.7;margin-bottom:30px;color:#9a927e;font-size:15px;font-style:italic;padding:0 20px}
+.story b{color:#c8b060;font-style:normal}
+button{background:#151009;border:1px solid #5a4a28;color:#cbb98a;font-family:inherit;font-size:16px;
+ padding:12px 34px;cursor:pointer;letter-spacing:.12em;transition:.25s;margin:6px}
+button:hover{background:#2a1d0c;border-color:#a8823a;color:#f0dfae;box-shadow:0 0 22px rgba(160,110,30,.35)}
+.controls{margin-top:34px;font-size:12px;color:#5f5a4a;line-height:2}
+
+/* ---------- КАТСЦЕНА ---------- */
+#cutscene{position:fixed;inset:0;z-index:40;pointer-events:auto;background:transparent}
+#csText{position:absolute;left:50%;bottom:14%;transform:translateX(-50%);max-width:70%;text-align:center;
+ font-size:clamp(16px,2.4vw,26px);line-height:1.6;color:#d8cfb4;text-shadow:0 2px 12px #000,0 0 30px rgba(0,0,0,.9);
+ opacity:0;transition:opacity .8s;font-style:italic;pointer-events:none}
+#cineBars{position:fixed;inset:0;z-index:41;pointer-events:none}
+.bar{position:absolute;left:0;width:100%;height:9vh;background:#000}
+.bar.top{top:0}.bar.bot{bottom:0}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;z-index:20;pointer-events:none}
+#facePanel{position:absolute;left:18px;bottom:18px;display:flex;gap:10px;align-items:flex-end;
+ background:rgba(4,4,6,.55);padding:10px 14px 10px 10px;border:1px solid #26231a;border-radius:6px}
+.bars{display:flex;flex-direction:column;gap:7px;width:150px}
+.barRow{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.15em;color:#8a8068}
+.barRow span{width:30px;text-align:right}
+.barOut{flex:1;height:11px;background:#12100b;border:1px solid #35301f;border-radius:2px;overflow:hidden}
+.barIn{height:100%;width:100%;transition:width .25s}
+.barIn.hp{background:linear-gradient(90deg,#5a0d0d,#a82020)}
+.barIn.st{background:linear-gradient(90deg,#0d3a5a,#2080a8)}
+.barIn.sn{background:linear-gradient(90deg,#3a0d5a,#8020a8)}
+
+#hotbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;align-items:flex-end}
+.slot{width:56px;height:56px;background:rgba(6,6,8,.7);border:1px solid #35301f;border-radius:5px;
+ display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;pointer-events:auto;cursor:pointer;transition:.15s}
+.slot em{position:absolute;top:2px;left:5px;font-size:9px;color:#6a6048;font-style:normal}
+.slot.sel{border-color:#c8a24a;box-shadow:0 0 14px rgba(200,160,60,.45);background:rgba(24,18,8,.85)}
+#invHint{font-size:11px;color:#7a7058;letter-spacing:.1em;margin-left:10px;align-self:center}
+
+#handPanel{position:absolute;right:20px;bottom:18px;text-align:right;background:rgba(4,4,6,.55);
+ border:1px solid #26231a;border-radius:6px;padding:10px 16px;min-width:170px}
+#handName{font-size:18px;color:#d8c890;letter-spacing:.08em}
+#ammoInfo{font-size:26px;color:#fff;text-shadow:0 0 10px rgba(255,200,80,.4);font-family:'Courier New',monospace}
+#flashInfo{font-size:11px;color:#8a8068;margin-top:4px}
+
+#objective{position:absolute;top:16px;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:.1em;
+ color:#a8985a;text-align:center;text-shadow:0 1px 6px #000;opacity:.9;line-height:1.5;max-width:70vw}
+#interactPrompt{position:absolute;top:54%;left:50%;transform:translateX(-50%);font-size:15px;color:#e8dcb0;
+ background:rgba(0,0,0,.6);padding:6px 16px;border:1px solid #4a4028;border-radius:4px;letter-spacing:.06em}
+#toast{position:absolute;top:12%;left:50%;transform:translateX(-50%);font-size:17px;color:#e8d8a8;
+ text-shadow:0 0 14px #000;opacity:0;transition:opacity .5s;max-width:80vw;text-align:center;font-style:italic}
+#crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(220,210,180,.5);font-size:18px}
+
+#sanityMeterFx{position:fixed;inset:0;z-index:15;pointer-events:none;opacity:0;transition:opacity .8s;
+ background:radial-gradient(ellipse at center,transparent 40%,rgba(80,0,0,.5) 100%);
+ animation:sanPulse 1.1s ease-in-out infinite}
+@keyframes sanPulse{50%{filter:blur(2px) hue-rotate(20deg)}}
+#damageFlash{position:fixed;inset:0;z-index:16;pointer-events:none;background:radial-gradient(ellipse,transparent 30%,rgba(160,0,0,.6));opacity:0;transition:opacity .3s}
+#vignette{position:fixed;inset:0;z-index:14;pointer-events:none;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.75) 100%)}
+
+/* ---------- МОДАЛКИ ---------- */
+.modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78)}
+.paper{background:#d8cba4;color:#2a2015;padding:34px 40px;max-width:560px;width:92vw;transform:rotate(-.6deg);
+ box-shadow:0 20px 80px rgba(0,0,0,.9),inset 0 0 60px rgba(120,90,30,.25);
+ background-image:linear-gradient(rgba(120,90,40,.08) 1px,transparent 1px);position:relative}
+.paper::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,transparent 60%,rgba(90,60,20,.3));pointer-events:none}
+#noteTitle{font-weight:bold;margin-bottom:14px;font-size:17px;letter-spacing:.05em;border-bottom:1px dashed #6a5a30;padding-bottom:8px}
+#noteBody{white-space:pre-wrap;font-family:'Segoe Script','Comic Sans MS',cursive;font-size:16px;line-height:1.75;min-height:180px}
+.paper button{margin-top:18px;background:#b8a878;border-color:#6a5a30;color:#2a2015}
+
+.panelBox{background:#0c0a07;border:1px solid #4a3d20;padding:26px 30px;max-width:640px;width:92vw;text-align:left;border-radius:6px;box-shadow:0 0 60px rgba(0,0,0,.9)}
+.panelBox.center{text-align:center}
+.panelBox h3{color:#c8a24a;letter-spacing:.2em;margin-bottom:10px}
+.hint{font-size:13px;color:#8a8068;line-height:1.6;margin-bottom:12px}
+#lockCanvas{display:block;margin:0 auto;background:#0a0806;border:1px solid #35301f;cursor:grab}
+#lockStatus{margin-top:10px;font-size:13px;color:#a8985a;text-align:center;min-height:20px}
+
+.doorTrack{position:relative;width:100%;height:34px;background:#12100b;border:1px solid #4a3d20;border-radius:4px;overflow:hidden;margin:14px 0}
+#doorFill{position:absolute;left:0;bottom:0;top:0;width:0;background:linear-gradient(90deg,#3a5a2a,#7aa84a);transition:width .08s}
+#doorDanger{position:absolute;left:0;top:0;bottom:0;background:rgba(160,20,20,.25);border-right:2px solid #a83030}
+#doorMarker{position:absolute;top:-4px;bottom:-4px;width:3px;background:#ffd75a;box-shadow:0 0 10px #ffd75a}
+#doorStatus{text-align:center;font-size:14px;color:#c8b060}
+
+/* ---------- ИНВЕНТАРЬ ---------- */
+.invWrap{display:flex;gap:26px;background:#0c0a07;border:1px solid #4a3d20;border-radius:8px;padding:22px;max-width:900px;width:94vw}
+.invLeft{text-align:center}
+#wearSlots{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.wearSlot{font-size:12px;color:#a8985a;background:#151009;border:1px solid #35301f;padding:4px 8px;border-radius:3px;text-align:left}
+.invRight{flex:1;display:flex;flex-direction:column}
+.invRight h3{color:#c8a24a;letter-spacing:.25em;margin-bottom:12px}
+#invGrid{display:grid;grid-template-columns:repeat(5,64px);gap:6px}
+.invCell{width:64px;height:64px;background:#151009;border:1px solid #35301f;border-radius:4px;position:relative;
+ display:flex;align-items:center;justify-content:center;font-size:26px;cursor:pointer;transition:.12s}
+.invCell:hover{border-color:#a8823a}
+.invCell.sel{border-color:#ffd75a;box-shadow:0 0 12px rgba(255,215,90,.35)}
+.invCell .cnt{position:absolute;bottom:2px;right:4px;font-size:11px;color:#e8d8a8}
+.invCell .nm{position:absolute;top:1px;left:3px;font-size:8px;color:#6a6048}
+#invItemInfo{margin-top:12px;min-height:44px;font-size:13px;color:#a8985a;line-height:1.5;border-top:1px dashed #35301f;padding-top:8px}
+.invBtns{margin-top:auto;display:flex;gap:10px;justify-content:flex-end}
+
+/* ---------- ПАУЗА / КОНЦОВКА ---------- */
+#pauseMenu h2{color:#a83030;letter-spacing:.3em;margin-bottom:14px;font-size:30px}
+#ending{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#endText{font-size:clamp(15px,2.2vw,22px);line-height:2;color:#b8ac8e;text-align:center;white-space:pre-wrap;font-style:italic;min-height:50vh}

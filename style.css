@@ -1,0 +1,141 @@
+/* ================= МИШУТКА: Тихая Падь — стили ================= */
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body{ width:100%; height:100%; overflow:hidden; background:#000; font-family:'Courier New',monospace; color:#cfc8bc; user-select:none; }
+#app{ position:relative; width:100vw; height:100vh; }
+canvas#game{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
+.hidden{ display:none !important; }
+
+/* ---------- экраны ---------- */
+.screen{ position:absolute; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center, rgba(20,14,10,.92) 0%, rgba(0,0,0,.99) 75%); }
+.menu-inner{ text-align:center; max-width:720px; padding:30px; animation:flickerIn 2s steps(20) both; }
+.title-glitch{ font-size:72px; letter-spacing:14px; color:#b8202a; text-shadow:0 0 24px #5a0000, 3px 0 #1e90ff55, -3px 0 #ff004455;
+  position:relative; font-weight:bold; animation:jitter 4s infinite; }
+.title-glitch::after{ content:attr(data-text); position:absolute; left:2px; top:0; color:#ffffff22; clip-path:inset(20% 0 30% 0); animation:glitchA 3s infinite linear alternate; }
+@keyframes glitchA{ 0%{clip-path:inset(10% 0 80% 0)} 25%{clip-path:inset(60% 0 5% 0)} 50%{clip-path:inset(30% 0 50% 0)} 100%{clip-path:inset(80% 0 2% 0)} }
+@keyframes jitter{ 0%,94%,100%{transform:translate(0)} 95%{transform:translate(-3px,1px)} 96%{transform:translate(3px,-1px)} 97%{transform:translate(-2px,0)} }
+@keyframes flickerIn{ 0%{opacity:0} 10%{opacity:.4} 12%{opacity:.1} 20%{opacity:.8} 24%{opacity:.2} 40%{opacity:1} 42%{opacity:.5} 60%{opacity:1} }
+.subtitle{ font-size:20px; letter-spacing:6px; color:#8f8677; margin:10px 0 26px; }
+.lore{ font-size:15px; line-height:1.9; color:#9a8f7d; margin-bottom:30px; font-style:italic; }
+.warn{ margin-top:24px; color:#7a3030; font-size:13px; letter-spacing:2px; animation:pulseWarn 2.5s infinite; }
+@keyframes pulseWarn{ 0%,100%{opacity:.4} 50%{opacity:1} }
+.controls-info{ font-size:13px; line-height:2; color:#6d675c; border:1px solid #2a251e; padding:14px 20px; background:#0a0806aa; margin-top:18px; }
+.big-btn{ font-family:inherit; font-size:20px; letter-spacing:4px; color:#d8cfc0; background:linear-gradient(#1c1712,#0b0906);
+  border:1px solid #5a4a30; padding:16px 44px; cursor:pointer; transition:.2s; text-shadow:0 0 8px #000; }
+.big-btn:hover{ border-color:#b8202a; color:#fff; box-shadow:0 0 24px #b8202a55, inset 0 0 18px #b8202a22; letter-spacing:6px; }
+.big-btn.small{ font-size:15px; padding:10px 26px; display:block; margin:12px auto; }
+
+/* ---------- катсцена ---------- */
+#cutscene{ background:#000; z-index:70; }
+#csText{ max-width:760px; text-align:center; font-size:22px; line-height:2; color:#cbbfa8; text-shadow:0 0 14px #000; opacity:0; transition:opacity 1.2s; padding:20px; }
+#csSkip{ position:absolute; bottom:26px; right:34px; color:#4d463c; font-size:13px; }
+
+/* ---------- кинополосы ---------- */
+#cineBars{ position:absolute; inset:0; z-index:55; pointer-events:none; }
+#cineBars .bar{ position:absolute; left:0; width:100%; height:11vh; background:#000; transition:height 1s; }
+#cineBars .bar.top{ top:0; border-bottom:1px solid #150f0a; }
+#cineBars .bar.bottom{ bottom:0; border-top:1px solid #150f0a; }
+
+/* ---------- атмосфера поверх ---------- */
+#vignette{ position:absolute; inset:0; z-index:8; pointer-events:none;
+  background:radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,.55) 78%, rgba(0,0,0,.92) 100%); }
+#grain{ position:absolute; inset:-50%; z-index:9; pointer-events:none; opacity:.07;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  animation:grainMove .35s steps(4) infinite; }
+@keyframes grainMove{ 0%{transform:translate(0,0)} 25%{transform:translate(-4%,3%)} 50%{transform:translate(3%,-5%)} 75%{transform:translate(-2%,-2%)} 100%{transform:translate(4%,2%)} }
+#damageFlash{ position:absolute; inset:0; z-index:10; pointer-events:none; opacity:0;
+  background:radial-gradient(ellipse at center, transparent 30%, rgba(120,0,0,.75) 100%); transition:opacity .4s; }
+#sanityMeterFx{ position:absolute; inset:0; z-index:7; pointer-events:none; opacity:0; transition:opacity 2s;
+  background:repeating-linear-gradient(0deg, rgba(20,0,40,.14) 0 2px, transparent 2px 5px); mix-blend-mode:overlay; }
+
+/* ---------- HUD ---------- */
+#hud{ position:absolute; inset:0; z-index:20; pointer-events:none; }
+#faceBox{ position:absolute; left:18px; bottom:18px; display:flex; gap:12px; align-items:flex-end;
+  background:linear-gradient(#0c0a07dd,#050403ee); border:1px solid #33291c; padding:10px; }
+#faceSvg{ border:1px solid #241c12; background:#0a0705; filter:saturate(.85); }
+#bars{ width:190px; }
+.barRow{ margin-bottom:9px; }
+.barRow span{ font-size:10px; letter-spacing:2px; color:#8a7f6b; }
+.track{ height:11px; background:#160f0a; border:1px solid #3a2e1e; margin-top:2px; position:relative; overflow:hidden; }
+.track div{ height:100%; width:100%; transition:width .35s; }
+#hpBar{ background:linear-gradient(#c22, #611); box-shadow:0 0 8px #c22; }
+#stBar{ background:linear-gradient(#b8a02a, #5c4f10); }
+#snBar{ background:linear-gradient(#5a86c8, #22385c); }
+
+#handInfo{ position:absolute; right:22px; bottom:20px; text-align:right;
+  background:linear-gradient(#0c0a07dd,#050403ee); border:1px solid #33291c; padding:12px 16px; min-width:170px; }
+#handName{ font-size:17px; letter-spacing:3px; color:#d8cbb2; }
+#ammoInfo{ font-size:30px; color:#e8dccd; text-shadow:0 0 10px #000; }
+#flashInfo{ font-size:11px; color:#8a7f6b; margin-top:4px; letter-spacing:1px; }
+
+#hotbar{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:8px; }
+.slot{ width:58px; height:58px; background:#0b0906dd; border:1px solid #33291c; position:relative;
+  display:flex; align-items:center; justify-content:center; font-size:26px; color:#cbbfa8; transition:.15s; }
+.slot.sel{ border-color:#b8202a; box-shadow:0 0 12px #b8202a66 inset, 0 0 8px #b8202a44; }
+.slot .key{ position:absolute; top:2px; left:5px; font-size:10px; color:#6d675c; }
+#invHint{ position:absolute; left:50%; bottom:82px; transform:translateX(-50%); font-size:11px; color:#5d564a; letter-spacing:2px; }
+
+#crosshair{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#ffffff55; font-size:18px; pointer-events:none; }
+#interactPrompt{ position:absolute; left:50%; top:56%; transform:translateX(-50%); font-size:15px; letter-spacing:2px;
+  color:#e6d9b8; background:#000000b8; border:1px solid #4a3c24; padding:7px 16px; text-shadow:0 0 6px #000; }
+#toast{ position:absolute; left:50%; top:14%; transform:translateX(-50%); font-size:17px; letter-spacing:2px; color:#e8dccd;
+  text-shadow:0 0 12px #000, 0 2px 4px #000; opacity:0; transition:opacity .6s; max-width:70%; text-align:center; }
+#objective{ position:absolute; right:22px; top:20px; font-size:12px; letter-spacing:2px; color:#9a8a68; text-align:right;
+  border-right:2px solid #5a4a30; padding-right:10px; text-shadow:0 0 6px #000; max-width:340px; }
+
+/* ---------- оверлеи (пазлы/инвентарь) ---------- */
+.overlay{ position:absolute; inset:0; z-index:40; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.82); pointer-events:auto; backdrop-filter:blur(2px); }
+.panel{ background:linear-gradient(#151009,#0a0705); border:1px solid #4a3c24; padding:26px 34px; text-align:center;
+  box-shadow:0 0 60px #000 inset, 0 0 30px #000; max-width:560px; }
+.panel h3,.panel h2{ letter-spacing:5px; color:#cdbb90; margin-bottom:12px; }
+.hint{ font-size:12px; color:#7d735f; margin-bottom:14px; line-height:1.6; }
+.rowBtns{ margin-top:14px; display:flex; gap:10px; justify-content:center; }
+.small-btn{ font-family:inherit; background:#171009; color:#cbbfa8; border:1px solid #4a3c24; padding:8px 18px; cursor:pointer; letter-spacing:2px; font-size:13px; }
+.small-btn:hover{ border-color:#b8202a; color:#fff; }
+#lockCanvas{ border:1px solid #33291c; background:#070503; cursor:grab; }
+#lockStatus{ margin-top:10px; font-size:14px; color:#a89870; letter-spacing:2px; }
+
+#doorTrack{ position:relative; width:380px; height:34px; margin:18px auto; background:#120d08; border:1px solid #4a3c24; }
+#doorFill{ position:absolute; left:0; top:0; bottom:0; width:0%; background:linear-gradient(#7a6234,#3a2f18); transition:width .08s linear; }
+#doorDanger{ position:absolute; left:0; top:0; bottom:0; width:22%; background:#5a0d0d55; border-right:1px dashed #a22; }
+#doorMarker{ position:absolute; top:-4px; bottom:-4px; width:4px; background:#e8dccd; left:50%; box-shadow:0 0 8px #fff; }
+#doorStatus{ font-size:14px; color:#a89870; letter-spacing:2px; }
+
+/* ---------- инвентарь ---------- */
+.inv-panel{ display:flex; gap:30px; background:linear-gradient(#141009,#090705); border:1px solid #4a3c24; padding:22px 30px;
+  box-shadow:0 0 80px #000 inset; }
+.inv-left h3,.inv-right h3{ letter-spacing:5px; color:#cdbb90; margin-bottom:8px; }
+#charSvg{ background:radial-gradient(ellipse at 50% 30%, #1c150d, #060403 80%); border:1px solid #2a2216; }
+#wearSlots{ margin-top:8px; }
+.wearSlot{ font-size:11px; color:#8a7f6b; border:1px dashed #33291c; padding:5px 8px; margin-top:5px; letter-spacing:1px; }
+#invGrid{ display:grid; grid-template-columns:repeat(5,64px); gap:7px; }
+.invCell{ width:64px; height:64px; background:#0d0a06; border:1px solid #2a2216; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; cursor:pointer; position:relative; font-size:22px; transition:.12s; }
+.invCell:hover{ border-color:#8a7040; background:#171008; }
+.invCell.sel{ border-color:#b8202a; box-shadow:0 0 10px #b8202a55 inset; }
+.invCell .cnt{ position:absolute; bottom:2px; right:4px; font-size:11px; color:#cdbb90; }
+.invCell .nm{ font-size:8px; color:#6d675c; margin-top:1px; letter-spacing:.5px; }
+#invItemInfo{ min-height:56px; margin-top:12px; font-size:12px; color:#9a8f7d; line-height:1.6; border-top:1px solid #2a2216; padding-top:10px; width:340px; }
+
+/* ---------- записка ---------- */
+.note-paper{ max-width:560px; background:linear-gradient(#d8cba8,#c4b48c); color:#2a1f12; padding:34px 40px;
+  font-family:Georgia,'Times New Roman',serif; transform:rotate(-.6deg); box-shadow:0 20px 80px #000, inset 0 0 60px #8a704055;
+  background-image:radial-gradient(circle at 80% 10%, #b09a6a55 0 12%, transparent 13%), linear-gradient(#d8cba8,#c9b992); }
+#noteTitle{ font-size:14px; letter-spacing:3px; color:#7a2020; border-bottom:1px solid #8a7040; padding-bottom:8px; margin-bottom:16px; text-transform:uppercase; }
+#noteBody{ font-size:18px; line-height:1.9; white-space:pre-wrap; font-style:italic; min-height:120px; }
+.note-paper button{ margin-top:22px; background:#3a2f1c; color:#e8dccd; border:none; padding:8px 18px; cursor:pointer; font-family:inherit; letter-spacing:2px; }
+
+/* ---------- финал ---------- */
+#ending{ background:#000; z-index:80; }
+#endText{ max-width:720px; text-align:center; font-size:20px; line-height:2.1; color:#cbbfa8; white-space:pre-wrap; padding:20px; }
+#btnRestart{ margin-top:30px; }
+#ending .col{ display:flex; flex-direction:column; align-items:center; }
+
+#loading{ position:fixed; inset:0; z-index:99; background:#000; color:#5a4a30; display:flex; align-items:center; justify-content:center;
+  font-size:18px; letter-spacing:6px; }
+
+@media (max-width:900px){
+  .inv-panel{ flex-direction:column; max-height:92vh; overflow:auto; }
+  .title-glitch{ font-size:44px; }
+}

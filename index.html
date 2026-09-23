@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>МИШУТКА · Тихая Падь — хоррор в психбольнице</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ================= МЕНЮ ================= -->
+<div id="menu">
+  <div class="fogLayer"></div>
+  <h1 class="glitch" data-text="МИШУТКА">МИШУТКА</h1>
+  <div class="subtitle">· ТИХАЯ ПАДЬ · психиатрическая больница №7 ·</div>
+  <div class="story">
+    Ты очнулся на койке в палате №4. На запястье — браслет с именем, которое ты не помнишь.<br>
+    Главный врач Тамик говорит, что забыть — это выздоровление.<br>
+    Но по коридорам уже ходит то, что живёт у тебя в голове.<br>
+    <b>Собери записки. Вспомни всё. Выберись. Или стань частью больницы.</b>
+  </div>
+  <button id="btnStart">► НАЧАТЬ СМЕНУ ПАМЯТИ</button>
+  <div class="controls">
+    WASD — движение · Shift — бег (стамина) · Ctrl — красться · ЛКМ — атака/выстрел · ПКМ — прицел фонаря<br>
+    F — фонарь (батарейки!) · E — взаимодействие · R — перезарядка · I — инвентарь/одежда · 1-4 — оружие<br>
+    Запертые шкафы и двери — взламываются мини-игрой замка (колесо мыши). Призраки боятся света фонаря.
+  </div>
+</div>
+
+<!-- ================= КАТСЦЕНА ================= -->
+<div id="cutscene" class="hidden"><div id="csText"></div></div>
+<div id="cineBars" class="hidden"><div class="bar top"></div><div class="bar bot"></div></div>
+
+<!-- ================= HUD ================= -->
+<div id="hud" class="hidden">
+  <!-- лицо слева: HP / стамина / рассудок -->
+  <div id="facePanel">
+    <svg viewBox="0 0 100 110" width="92" height="100">
+      <ellipse cx="50" cy="55" rx="33" ry="40" fill="#caa27a"/>
+      <path d="M17 45 Q20 12 50 10 Q82 12 84 46 Q76 26 50 24 Q26 26 17 45Z" fill="#4a3526"/>
+      <g id="cracks" opacity="0" stroke="#5a0808" stroke-width="1.6" fill="none">
+        <path d="M30 25 L34 40 L30 52"/><path d="M66 22 L62 38 L67 50"/><path d="M50 12 L50 26"/>
+      </g>
+      <ellipse cx="37" cy="52" rx="8" ry="9" fill="#fff"/>
+      <ellipse cx="63" cy="52" rx="8" ry="9" fill="#fff"/>
+      <circle id="pupilL" cx="37" cy="53" r="3" fill="#1a0d08"/>
+      <circle id="pupilR" cx="63" cy="53" r="3" fill="#1a0d08"/>
+      <path d="M30 63 Q37 67 44 63" stroke="#8a5a3a" stroke-width="2" fill="none"/>
+      <path d="M56 63 Q63 67 70 63" stroke="#8a5a3a" stroke-width="2" fill="none"/>
+      <path d="M47 58 Q50 68 53 58" stroke="#a06a4a" stroke-width="2.4" fill="none"/>
+      <path id="mouth" d="M40 78 Q50 82 60 78" stroke="#6a2a20" stroke-width="3" fill="none"/>
+      <g id="bloodDrips" opacity="0" fill="#8a0f0f">
+        <path d="M37 44 q2 10 0 16 q-3 -8 0 -16z"/><path d="M64 42 q3 12 0 20 q-4 -10 0 -20z"/>
+      </g>
+    </svg>
+    <div class="bars">
+      <div class="barRow"><span>HP</span><div class="barOut"><div id="hpBar" class="barIn hp"></div></div></div>
+      <div class="barRow"><span>ВЫН</span><div class="barOut"><div id="stBar" class="barIn st"></div></div></div>
+      <div class="barRow"><span>РАС</span><div class="barOut"><div id="snBar" class="barIn sn"></div></div></div>
+    </div>
+  </div>
+
+  <!-- хотбар снизу -->
+  <div id="hotbar">
+    <div class="slot" data-i="0"><span class="ic"></span><em>1</em></div>
+    <div class="slot" data-i="1"><span class="ic"></span><em>2</em></div>
+    <div class="slot" data-i="2"><span class="ic"></span><em>3</em></div>
+    <div class="slot" data-i="3"><span class="ic"></span><em>4</em></div>
+    <div id="invHint">[I] Инвентарь</div>
+  </div>
+
+  <!-- справа снизу: текущая рука -->
+  <div id="handPanel">
+    <div id="handName">Кулаки</div>
+    <div id="ammoInfo">—</div>
+    <div id="flashInfo">Фонарь: ВКЛ · 100%</div>
+  </div>
+
+  <div id="objective">ЗАДАЧА:<br>Осмотрись</div>
+  <div id="interactPrompt" class="hidden">[E]</div>
+  <div id="toast"></div>
+  <div id="crosshair">+</div>
+</div>
+
+<!-- ================= ЗАПИСКА ================= -->
+<div id="noteModal" class="modal hidden">
+  <div class="paper">
+    <div id="noteTitle"></div>
+    <pre id="noteBody"></pre>
+    <button id="noteClose">[E] Сложить в карман</button>
+  </div>
+</div>
+
+<!-- ================= ВЗЛОМ ЗАМКА ================= -->
+<div id="lockPuzzle" class="modal hidden">
+  <div class="panelBox">
+    <h3>ВЗЛОМ ЗАМКА</h3>
+    <div class="hint">Наведи курсор на штырёк и крути колесо мыши. Лови момент — щёлкнет зелёным.
+      Когда все 4 встанут — зажимай ЛКМ и тяни, чтобы повернуть отвёртку.</div>
+    <canvas id="lockCanvas" width="300" height="300"></canvas>
+    <div id="lockStatus"></div>
+    <button id="lockCancel">Отступить [ESC]</button>
+  </div>
+</div>
+
+<!-- ================= МИНИ-ИГРА ДВЕРИ (затычка/дубинка упор) ================= -->
+<div id="doorMinigame" class="modal hidden">
+  <div class="panelBox">
+    <h3>УДЕРЖИ ДВЕРЬ</h3>
+    <div class="hint">Призраки давят с той стороны! Зажми ЛКМ, чтобы толкать засов затычкой вверх.
+      Не отпускай надолго — сорвётся.</div>
+    <div class="doorTrack"><div id="doorFill"></div><div id="doorDanger"></div><div id="doorMarker"></div></div>
+    <div id="doorStatus">Держи ЛКМ!</div>
+    <button id="doorCancel">Бросить засов [ESC]</button>
+  </div>
+</div>
+
+<!-- ================= ИНВЕНТАРЬ ================= -->
+<div id="inventory" class="modal hidden">
+  <div class="invWrap">
+    <div class="invLeft">
+      <svg viewBox="0 0 200 320" width="230" height="340">
+        <!-- персонаж Мишутка -->
+        <ellipse cx="100" cy="45" rx="26" ry="30" fill="#caa27a"/>
+        <path d="M74 38 Q78 10 100 9 Q123 10 126 40 Q118 22 100 21 Q82 22 74 38Z" fill="#4a3526"/>
+        <circle cx="90" cy="44" r="4" fill="#1a0d08"/><circle cx="110" cy="44" r="4" fill="#1a0d08"/>
+        <path d="M92 58 Q100 63 108 58" stroke="#6a2a20" stroke-width="2.5" fill="none"/>
+        <rect id="legsShape" x="80" y="180" width="16" height="90" fill="#7a7f86"/>
+        <rect x="104" y="180" width="16" height="90" fill="#7a7f86"/>
+        <rect x="76" y="266" width="24" height="12" rx="4" fill="#3a3a3a"/>
+        <rect x="100" y="266" width="24" height="12" rx="4" fill="#3a3a3a"/>
+        <path id="torsoShape" d="M72 80 Q100 68 128 80 L132 182 Q100 192 68 182Z" fill="#d8d2c4"/>
+        <path id="armsShape" d="M72 84 L52 160 L64 164 L80 100Z M128 84 L148 160 L136 164 L120 100Z" fill="#d8d2c4"/>
+        <circle cx="58" cy="166" r="8" fill="#caa27a"/><circle cx="142" cy="166" r="8" fill="#caa27a"/>
+        <g id="clothingLayer"></g>
+        <g id="weaponLayer"></g>
+        <text x="100" y="305" text-anchor="middle" fill="#8a8070" font-size="12" font-family="Georgia">«МИШУТКА» — браслет на запястье</text>
+      </svg>
+      <div id="wearSlots"></div>
+    </div>
+    <div class="invRight">
+      <h3>РЮКЗАК ПАМЯТИ</h3>
+      <div id="invGrid"></div>
+      <div id="invItemInfo">Выбери предмет</div>
+      <div class="invBtns"><button id="invUse">Использовать / Надеть</button><button id="invClose">Закрыть [I]</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ПАУЗА / СМЕРТЬ ================= -->
+<div id="pauseMenu" class="modal hidden">
+  <div class="panelBox center">
+    <h2 id="pauseTitle">ПАУЗА</h2>
+    <div id="pauseSub" class="hint"></div>
+    <button id="btnResume">Продолжить</button>
+    <button id="btnRestart2">Начать заново</button>
+  </div>
+</div>
+
+<!-- ================= КОНЦОВКА ================= -->
+<div id="ending" class="hidden"><pre id="endText"></pre><button id="btnRestart">НАЧАТЬ ЗАНОВО</button></div>
+
+<div id="sanityMeterFx"></div>
+<div id="damageFlash"></div>
+<div id="vignette"></div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

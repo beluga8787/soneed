@@ -30,11 +30,12 @@ const P = { // параметры игрока
   hp:100,maxHp:100,st:100,san:100, speed:3.2, runSpeed:5.6, crouchSpeed:1.6,
   y:.9, pos:new THREE.Vector3(0,.9,5), vel:new THREE.Vector3(), r:.35,
   weapons:['fists'], ammo:{pistol:0,shotgun:0,revolver:0}, mag:{pistol:0,shotgun:0,revolver:0},
-  inv:[], worn:{chest:'shirt_hospital',pants:'pants_gown'},
+  inv:[], worn:{chest:'shirt_hospital',pants:'pants_gown',head:null,face:null,ear:null,feet:null},
   hasKey:{normal:false,card:false,exit:false},
   attackCd:0, reloadT:0, hurtT:0, stepT:0, bobT:0, notesFound:0, earplugs:false,
 };
 window.P=P;
+let muzzleT=0, qualityScale=1, perfAcc=0, perfFrames=0;
 
 /* ================= UI ХЕЛПЕРЫ ================= */
 function safeCall(fn,label){ if(typeof fn!=='function') return; try{ fn(); }catch(err){ console.error('[MIŠUTKA] ошибка в "'+label+'":',err); } }
@@ -66,11 +67,13 @@ function updateHUD(){
 
 /* ================= ИНИЦИАЛИЗАЦИЯ СЦЕНЫ ================= */
 function initThree(){
-  renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));
+  renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true,powerPreference:'high-performance'});
+  qualityScale=Math.min(devicePixelRatio,1.75);
+  renderer.setPixelRatio(qualityScale);
   renderer.setSize(innerWidth,innerHeight);
   renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=.9;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=.98;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x04050a);
   scene.fog=new THREE.FogExp2(0x04050a,.055);
@@ -78,8 +81,26 @@ function initThree(){
   clock=new THREE.Clock();
   scene.add(new THREE.AmbientLight(0x223044,.5));
   const moon=new THREE.DirectionalLight(0x445577,.25); moon.position.set(-20,30,-10); scene.add(moon);
+  // статичная карта окружения — металл и стекло начинают «отражать», PBR выглядит дороже
+  try{
+    const pmrem=new THREE.PMREMGenerator(renderer);
+    const envScene=new THREE.Scene(); envScene.background=new THREE.Color(0x0b0f16);
+    const warm=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.MeshBasicMaterial({color:0x3a3528}));
+    warm.position.set(0,6,-8); envScene.add(warm);
+    const env=pmrem.fromScene(envScene,.04);
+    scene.environment=env.texture; pmrem.dispose();
+  }catch(e){ /* старые GPU — без env-карты */ }
   addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
     renderer.setSize(innerWidth,innerHeight); });
+}
+/* авто-детект производительности: если FPS падает — снижаем разрешение рендера */
+function perfGovernor(dt){
+  perfAcc+=dt; perfFrames++;
+  if(perfAcc>=2){
+    const fps=perfFrames/perfAcc; perfAcc=0; perfFrames=0;
+    if(fps<40&&qualityScale>.75){ qualityScale=Math.max(.75,qualityScale-.25); renderer.setPixelRatio(qualityScale); }
+    else if(fps>58&&qualityScale<Math.min(devicePixelRatio,1.75)){ qualityScale=Math.min(Math.min(devicePixelRatio,1.75),qualityScale+.25); renderer.setPixelRatio(qualityScale); }
+  }
 }
 
 /* фонарик (spotlight от камеры) */
@@ -156,9 +177,10 @@ function addPickup(item,x,y,z,n=1){
 
 /* ================= ИНВЕНТАРЬ ================= */
 function invCapacity(){ return P.worn.pants==='pants_cargo'?24:20; }
+const WEAR_SLOT={ 'wear:chest':'chest','wear:pants':'pants','wear:head':'head','wear:face':'face','wear:ear':'ear','wear:feet':'feet' };
 function giveItem(item,n=1){
   const def=ITEMS[item]; if(!def) return;
-  if(['use','wear:chest','wear:pants','wear:head','wear:face','wear:ear','hand'].includes(def.slot)){
+  if(['use','wear:chest','wear:pants','wear:head','wear:face','wear:ear','wear:feet','hand'].includes(def.slot)){
     let cnt=0; for(const s of P.inv) cnt+=s.n;
     if(cnt>=invCapacity()){ toast('Рюкзак набит — освободи место в инвентаре [I].'); return; }
   }
@@ -179,7 +201,7 @@ function giveItem(item,n=1){
     else { P.inv.push({item,n:1}); }
     return;
   }
-  if(def.slot.startsWith('wear')){ P.inv.push({item,n}); toast(`${def.name} — надень в инвентаре [I]`); return; }
+  if(def.slot.startsWith('wear')){ P.inv.push({item,n}); toast(`${def.name} — надень в инвентаре [I]`); renderInventory(); return; }
   // расходники стакаются
   const st=P.inv.find(s=>s.item===item);
   if(st) st.n+=n; else P.inv.push({item,n});
@@ -196,19 +218,27 @@ function renderInventory(){
     if(s){ const it=ITEMS[s.item];
       d.innerHTML=`<span>${it.icon}</span>${s.n>1?`<span class="cnt">${s.n}</span>`:''}<span class="nm">${it.name.slice(0,9)}</span>`;
       d.onclick=()=>{ grid.querySelectorAll('.sel').forEach(e=>e.classList.remove('sel')); d.classList.add('sel');
-        window.__selInv=i; $('invItemInfo').innerHTML=`<b>${it.name}</b><br>${it.desc}`; };
+        window.__selInv=i; $('invItemInfo').innerHTML=`<b>${it.name}</b><br>${it.desc}`; }
+      d.ondblclick=()=>{ window.__selInv=i; useSelected(); };
     }
     grid.appendChild(d);
   }
-  // слёты одежды
-  const names={chest:'Туловище',pants:'Ноги',head:'Голова',face:'Лицо',ear:'Уши'};
+  // слоты одежды
+  const names={chest:'Туловище',pants:'Ноги',head:'Голова',face:'Лицо',ear:'Уши',feet:'Обувь'};
   $('wearSlots').innerHTML='';
-  for(const k of ['chest','pants','head','face','ear']){
+  for(const k of ['chest','pants','head','face','ear','feet']){
     const div=document.createElement('div'); div.className='wearSlot';
     const it=P.worn[k]?ITEMS[P.worn[k]]:null;
     div.textContent=`${names[k]}: ${it?it.name:'—'}`;
     $('wearSlots').appendChild(div);
   }
+}
+function unequip(slot){
+  const cur=P.worn[slot]; if(!cur) return;
+  let cnt=0; for(const s of P.inv) cnt+=s.n;
+  if(cnt>=invCapacity()){ toast('Рюкзак набит — некуда положить снятую вещь.'); return; }
+  P.worn[slot]=null; P.inv.push({item:cur,n:1});
+  applyWorn(); renderInventory(); updateHUD(); toast('Снято: '+ITEMS[cur].name);
 }
 function useSelected(){
   const i=window.__selInv; if(i===undefined||!P.inv[i]) return;
@@ -221,7 +251,7 @@ function useSelected(){
     if(it.san){ P.san=Math.min(100,P.san+it.san); toast('Ты дышешь ровно. Рассудок +'+it.san); }
     s.n--; if(s.n<=0) P.inv.splice(i,1);
   } else if(it.slot.startsWith('wear')){
-    const slot=it.slot.split(':')[1];
+    const slot=WEAR_SLOT[it.slot]; if(!slot){ toast('Нельзя надеть.'); return; }
     if(P.worn[slot]===s.item){ toast('Уже надето.'); return; }
     if(P.worn[slot]){ P.inv.push({item:P.worn[slot],n:1}); }
     P.worn[slot]=s.item; s.n--; if(s.n<=0) P.inv.splice(i,1);
@@ -356,6 +386,24 @@ function spawnGhost(forceType){
 }
 
 /* ================= БОЙ ================= */
+let tracerPool=[], tracerT=[];
+function addTracer(a,b){
+  // пул из 6 трассеров: переиспользуем линии (без создания геометрии каждый выстрел)
+  if(!tracerPool.length){ for(let i=0;i<6;i++){
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+    const ln=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xffe9a0,transparent:true,opacity:.9}));
+    ln.frustumCulled=false; ln.visible=false; scene.add(ln); tracerPool.push(ln); } }
+  const idx=tracerPool._next=(tracerPool._next||0)%6;
+  const ln=tracerPool[idx]; const p=ln.geometry.attributes.position.array;
+  p[0]=a.x;p[1]=a.y;p[2]=a.z; p[3]=b.x;p[4]=b.y;p[5]=b.z;
+  ln.geometry.attributes.position.needsUpdate=true;
+  ln.material.opacity=.9; ln.visible=true; tracerT[idx]=.07;
+}
+function updateTracers(dt){
+  for(let i=0;i<tracerPool.length;i++){ const ln=tracerPool[i];
+    if(tracerT[i]>0){ tracerT[i]-=dt; if(tracerT[i]<=0) ln.visible=false; } }
+}
 function attackMelee(){
   if(P.attackCd>0) return;
   const w=P.weapons[currentSlot]; const it=ITEMS[w]||ITEMS.fists;
@@ -386,23 +434,26 @@ function shoot(){
   }
   P.mag[it.ammo]--;
   P.attackCd=w==='shotgun'?1.0:.35;
-  if(w==='shotgun') SFX.gunshot(); else SFX.gunshot();
+  SFX.gunshot();
   handItems.kick=1; shake(.15,w==='shotgun'?1.2:.5);
+  // вспышка выстрела (кратковременный light без пересоздания)
+  muzzleT=.06;
   const pellets=it.perShot||1;
   const dir=camDir();
+  const origin=P.pos.clone().setY(1.5);
   for(let i=0;i<pellets;i++){
     const d=dir.clone();
     const spread=w==='shotgun'?.09:.02;
     d.x+=rand(-spread,spread); d.y+=rand(-spread,spread); d.z+=rand(-spread,spread);
     d.normalize();
-    raycaster.set(P.pos.clone().setY(1.5),d);
+    raycaster.set(origin,d);
     const hits=raycaster.intersectObjects(monsters.filter(m=>!m.dead).map(m=>m.model),true);
     if(hits.length){
       let obj=hits[0].object, mm=null;
       while(obj&&!mm){ mm=monsters.find(m=>m.model===obj); obj=obj.parent; }
       if(mm) hurtMonster(mm,it.dmg/pellets*(pellets>1?1.6:1),.1);
-      spark(hits[0].point);
-    } else spark(camera.position.clone().addScaledVector(d,14));
+      spark(hits[0].point); addTracer(origin,hits[0].point);
+    } else { const far=origin.clone().addScaledVector(d,14); puff(far,0x886644,2,.1); addTracer(origin,far); }
   }
   updateHUD();
   return true;
@@ -477,7 +528,11 @@ function updateParticles(dt){
 let lockState=null;
 function startLockPuzzle(onSuccess,onCancel){
   state='puzzle'; document.exitPointerLock?.();
+  cabState=null; // режим замка — мини-игра шкафа выключена
   $('lockPuzzle').classList.remove('hidden');
+  const h3=$('lockPuzzle').querySelector('h3'); if(h3) h3.textContent='ВЗЛОМ ЗАМКА';
+  const hint=$('lockPuzzle').querySelector('.hint');
+  if(hint) hint.textContent='Нажми на штырёк и веди мышью ВВЕРХ — лови линию реза. Когда все 4 встанут — зажми ЛКМ у сердцевины и тяни вправо до упора.';
   const pins=[1,2,3,4].map(()=>({set:false,pos:0,target:rand(.55,.9)}));
   lockState={pins,angle:0,drag:null};
   puzzleCb={ok:onSuccess,cancel:onCancel};
@@ -511,65 +566,75 @@ function drawLock(){
   g.fillStyle='#bbb'; g.fillRect(0,-4,70,8);
   g.fillStyle='#654'; g.fillRect(-30,-7,32,14);
   g.restore();
+  if(allSet){
+    g.fillStyle=`rgba(200,162,74,${.6+.4*Math.sin(Date.now()/200)})`;
+    g.font='bold 13px Georgia'; g.textAlign='center';
+    g.fillText('⟶ ТЯНИ СЕРДЕЧВИНУ ВПРАВО ⟵',150,292);
+    if(!drawLock._iv) drawLock._iv=setInterval(()=>{ if(lockState&&lockState.pins.every(p=>p.set)) drawLock(); else {clearInterval(drawLock._iv);drawLock._iv=null;} },140);
+  }
   $('lockStatus').textContent=allSet?
-    'Все штыри встали по линии реза — ХВАТАЙ отвёртку (ЛКМ у центра) и ПОВЕРНИ мышью до упора!':
+    'Все штыри встали по линии реза — ХВАТАЙ сердцевину (ЛКМ у центра) и ПОВЕРНИ мышью вправо до упора!':
     `Штыри: ${lockState.pins.filter(p=>p.set).length}/4 · Зажми ЛКМ на штыре и ТЯНИ мышкой вверх`;
 }
 function lockPos(e){
   const r=$('lockCanvas').getBoundingClientRect();
-  return {x:e.clientX-r.left,y:e.clientY-r.top};
+  return {x:(e.clientX-r.left)*(300/r.width),y:(e.clientY-r.top)*(300/r.height)};
 }
+/* единые обработчики для обеих мини-игр (замок + шкаф) на одном canvas */
 $('lockCanvas').addEventListener('mousedown',e=>{
+  e.preventDefault();
+  if(cabState){ cabDown(e); return; }
   if(!lockState) return;
   const p=lockPos(e);
   if(lockState.pins.every(s=>s.set)){
-    if(Math.hypot(p.x-150,p.y-150)<80) lockState.drag={mode:'turn'};
+    if(Math.hypot(p.x-150,p.y-150)<95){ lockState.drag={mode:'turn',sx:p.x,a0:lockState.angle}; $('lockCanvas').style.cursor='grabbing'; }
     return;
   }
   for(let i=0;i<4;i++){
     const x=30+i*62;
-    if(Math.abs(p.x-x)<20&&p.y>40&&p.y<240&&!lockState.pins[i].set){
+    if(Math.abs(p.x-x)<22&&p.y>40&&p.y<250&&!lockState.pins[i].set){
       lockState.drag={mode:'pin',i,startY:p.y,startPos:lockState.pins[i].pos};
+      $('lockCanvas').style.cursor='grabbing';
     }
   }
 });
 addEventListener('mousemove',e=>{
+  if(cabState){ cabMove(e); return; }
   if(!lockState||!lockState.drag) return;
   const p=lockPos(e);
   const d=lockState.drag;
   if(d.mode==='pin'){
     const pin=lockState.pins[d.i];
     pin.pos=clamp(d.startPos+(d.startY-p.y)/130,0,1);
-    if(Math.abs(pin.pos-pin.target)<.045){ pin.set=true; SFX.puzzleTick(true); d.mode=null; }
-    else if(Math.abs(pin.pos-pin.target)>=.045&&(Math.abs(pin.pos-d.lastT||0)>.06)){ /* проскочил — пружина тянет вниз */ }
-    if(pin.pos>d.target+.09){ pin.pos=Math.max(0,pin.pos-(pin.pos-d.target)*.2); } // сопротивление
+    if(Math.abs(pin.pos-pin.target)<.05){ pin.set=true; SFX.puzzleTick(true); d.mode=null; }
+    else if(pin.pos>pin.target+.1){ pin.pos=pin.target+.1; } // жёсткий упор: дальше штырь не идёт
   } else if(d.mode==='turn'){
-    lockState.angle=clamp(lockState.angle-(p.y-150)*.0009+ .004,0,Math.PI/2);
-    lockState.angle=Math.min(Math.PI/2,Math.max(0,(p.x-150)-(d.sx||(d.sx=p.x)) )*.006 + (d.a0||(d.a0=lockState.angle)));
+    lockState.angle=clamp(d.a0+((p.x-d.sx)+(d.sy!==undefined?(d.sy-p.y):0))*.006,0,Math.PI/2);
     if(lockState.angle>=Math.PI/2-.02){ winLock(); return; }
   }
   drawLock();
 });
-addEventListener('mouseup',()=>{
+addEventListener('mouseup',e=>{
+  if(cabState){ cabUp(e); return; }
   if(!lockState||!lockState.drag) return;
   if(lockState.drag.mode==='pin'){
     const pin=lockState.pins[lockState.drag.i];
     if(!pin.set){ // пружина отбрасывает вниз, если не поймал момент
       let from=pin.pos; const t0=performance.now();
       const fall=()=>{ const k=Math.min(1,(performance.now()-t0)/300);
-        pin.pos=from*(1-k*k); if(k<1&&lockState) requestAnimationFrame(fall()); drawLock(); };
+        pin.pos=from*(1-k*k); if(k<1&&lockState) requestAnimationFrame(fall()); if(lockState) drawLock(); };
       fall(); SFX.puzzleTick(false);
     }
   }
-  lockState.drag=null;
+  lockState.drag=null; $('lockCanvas').style.cursor='grab';
 });
 function winLock(){
   $('lockPuzzle').classList.add('hidden');
-  const cb=puzzleCb.ok; lockState=null; state='play'; SFX.unlock(); cb&&cb();
+  const cb=puzzleCb?puzzleCb.ok:null; lockState=null; state='play'; SFX.unlock(); cb&&cb();
 }
 function cancelLock(){
   $('lockPuzzle').classList.add('hidden');
-  const cb=puzzleCb.cancel; lockState=null; state='play'; cb&&cb();
+  const cb=puzzleCb?puzzleCb.cancel:null; lockState=null; cabState=null; state='play'; cb&&cb();
 }
 
 /* ================= ДВЕРНАЯ МИНИ-ИГРА ================= */
@@ -630,6 +695,8 @@ function interactContainer(cont){
     return;
   }
   if(cont.opened){ if(!cont.shown&&cont.contents.length) revealContents(cont); return; }
+  // тумбочки и мелкие ящики открываются сразу — без мини-игры (дверца одна, тянуть не за что)
+  if(!cont.double){ openContainerAnim(cont); return; }
   startCabinetGame(cont,()=>openContainerAnim(cont));
 }
 function openContainerAnim(cont){
@@ -637,8 +704,8 @@ function openContainerAnim(cont){
   SFX.cabinet();
   const iv=setInterval(()=>{
     cont.searchAnim+=.06;
-    cont.doors.forEach((d,i)=>{ d.g.rotation.y=-Math.min(1.9,cont.searchAnim*(i===0?1.6:1.9))*(d.sign>0?1:-1)*(d.sign>0?1:1);
-      d.g.rotation.y = -Math.min(1.9,cont.searchAnim*1.8); if(d.sign<0) d.g.rotation.y=Math.min(1.9,cont.searchAnim*1.8); });
+    const a=Math.min(1.9,cont.searchAnim*1.8);
+    cont.doors.forEach(d=>{ d.g.rotation.y=d.sign>0?-a:a; });
     if(cont.searchAnim>=1.2){ clearInterval(iv); cont.opened=true; cont.animating=false; state='play'; revealContents(cont); }
   },30);
 }
@@ -1083,87 +1150,110 @@ function openWithPick(target,isDoor){
   });
 }
 
-// ——— мини-игра открытия шкафа: держи ЛКМ на дверце и тяни к краю ———
+// ——— мини-игра открытия шкафа/тумбочки: держи ЛКМ на дверце и тяни к краю ———
 let cabState=null;
 function startCabinetGame(cont,onDone){
   state='puzzle'; document.exitPointerLock?.();
+  lockState=null; puzzleCb=null; // режим замка выключен — работает режим шкафа
   $('lockPuzzle').classList.remove('hidden');
-  const h3=$('lockPuzzle').querySelector('h3'); if(h3) h3.textContent='ОБЫСК: '+(cont.label||'ШКАФЧИК');
+  const h3=$('lockPuzzle').querySelector('h3'); if(h3) h3.textContent='ОБЫСК: '+(cont.label||(cont.kind==='nightstand'?'ТУМОЧКА':(cont.kind==='locker'?'ШКАФЧИК':'ШКАФ')));
   const hint=$('lockPuzzle').querySelector('.hint');
-  if(hint) hint.textContent='Зажми ЛКМ на дверце и ТЯНИ её к краю шкафа: левую — влево, правую — вправо. Раскрывай ровно: резко дёрнешь — заскрипит на весь коридор.';
+  if(hint) hint.textContent='Зажми ЛКМ на дверце и ТЯНИ её к себе (вниз): левую — вниз-влево, правую — вниз-вправо. Дверцы настоящие — распахнутся в стороны. Резко дёрнешь — заскрипит на весь коридор.';
   cabState={ cont, doors:[{open:0},{open:0}], drag:null, onDone, done:false };
-  lockState=null; puzzleCb=null;
   drawCab();
-}
-function cabGeom(){
-  // геометрия двух створок для отрисовки и попаданий (створки раздвигаются к краям)
-  const out=[];
-  for(let i=0;i<2;i++){
-    const o=cabState.doors[i].open;
-    const w=105*(1-.86*o);            // ширина видимой створки сужается при открытии
-    const x=i===0?40:260-w;           // петля у левого/правого края шкафа
-    out.push({x,w});
-  }
-  return out;
 }
 function drawCab(){
   const cv=$('lockCanvas'),g=cv.getContext('2d');
   const cs=cabState; if(!cs) return;
+  g.clearRect(0,0,300,300);
   g.fillStyle='#0a0806'; g.fillRect(0,0,300,300);
-  // нутро шкафа
-  g.fillStyle='#17130c'; g.fillRect(40,25,220,250);
+  // корпус шкафа (вид спереди)
+  g.fillStyle='#14100a'; g.fillRect(28,18,244,262);
+  g.strokeStyle='#5a4a30'; g.lineWidth=3; g.strokeRect(28,18,244,262);
+  // тёмный проём с полками
+  g.fillStyle='#070503'; g.fillRect(40,26,220,246);
   g.strokeStyle='#2a2418'; g.lineWidth=2;
   for(const sy of [95,170]){ g.beginPath(); g.moveTo(45,sy); g.lineTo(255,sy); g.stroke(); }
   // содержимое проступает по мере открытия
   const o=(cs.doors[0].open+cs.doors[1].open)/2;
-  if(o>.15&&cs.cont.contents&&cs.cont.contents.length){
-    g.fillStyle=`rgba(216,203,164,${Math.min(.9,(o-.1)*1.3)})`;
-    g.font='italic 15px Georgia'; g.textAlign='center';
-    g.fillText('внутри что-то есть…',150,150);
-  } else if(o>.15){
-    g.fillStyle=`rgba(150,140,120,${Math.min(.7,(o-.1))})`;
-    g.font='italic 15px Georgia'; g.textAlign='center';
-    g.fillText('пусто…',150,150);
+  if(o>.1){
+    const has=cs.cont.contents&&cs.cont.contents.length;
+    g.globalAlpha=Math.min(1,(o-.08)*2.2);
+    if(has){
+      cs.cont.contents.forEach((it,i)=>{
+        const def=ITEMS[it.item];
+        g.font='30px serif'; g.textAlign='center';
+        g.fillText(def?def.icon:'📦',110+i*80,140);
+      });
+      g.font='italic 13px Georgia'; g.fillStyle='rgba(216,203,164,.9)';
+      g.fillText('внутри что-то есть…',150,250);
+    } else {
+      g.font='italic 14px Georgia'; g.fillStyle='rgba(150,140,120,.8)'; g.textAlign='center';
+      g.fillText('пусто…',150,150);
+    }
+    g.globalAlpha=1;
   }
-  // створки
-  const geo=cabGeom();
+  // НАСТОЯЩИЕ ДВЕРЦЫ: вращаются вокруг верхних петель (псевдо-3D перспективой)
   for(let i=0;i<2;i++){
-    const d=geo[i];
-    const grd=g.createLinearGradient(d.x,0,d.x+d.w,0);
-    grd.addColorStop(0,'#4a4034'); grd.addColorStop(.5,'#332c20'); grd.addColorStop(1,'#4a4034');
-    g.fillStyle=grd; g.fillRect(d.x,25,d.w,250);
-    g.strokeStyle='#5a4a30'; g.lineWidth=2; g.strokeRect(d.x,25,d.w,250);
-    // ручка у свободного края
-    const kx=i===0?d.x+d.w-9:d.x+9;
-    g.fillStyle='#c8a24a'; g.beginPath(); g.arc(kx,150,5,0,7); g.fill();
+    const op=cs.doors[i].open;
+    const ang=op*Math.PI*.42;              // угол отворота
+    const hingeX=i===0?40:260;             // петля у края корпуса
+    const dir=i===0?-1:1;                  // левая открывается влево, правая — вправо
+    const W0=110;                          // ширина дверцы в закрытом виде
+    const cosA=Math.cos(ang), sinA=Math.sin(ang);
+    const edgeX=hingeX+dir*W0*cosA;        // свободный край (по горизонтали ближе к оси)
+    const drop=W0*sinA*.55;                // перспективное «приближение» — дверца ниже и крупнее
+    const grd=g.createLinearGradient(hingeX,0,edgeX,0);
+    grd.addColorStop(0,'#4a4034'); grd.addColorStop(.5,'#3a3226'); grd.addColorStop(1,'#55483a');
+    g.fillStyle=grd;
+    g.beginPath();
+    g.moveTo(hingeX,26);
+    g.lineTo(edgeX,26+drop);
+    g.lineTo(edgeX,272+drop*1.3);
+    g.lineTo(hingeX,272);
+    g.closePath(); g.fill();
+    g.strokeStyle='#6a5638'; g.lineWidth=2; g.stroke();
+    // ручка на свободном крае
+    g.fillStyle='#c8a24a'; g.beginPath(); g.arc(edgeX-dir*6,150+drop,5,0,7); g.fill();
+    // зона хвата (невидимая) — для попаданий мыши
+    cs.doors[i].hit={ x1:Math.min(hingeX,edgeX)-8, x2:Math.max(hingeX,edgeX)+8, y1:20, y2:280 };
   }
   const done=cs.doors.every(d=>d.open>=1);
-  $('lockStatus').textContent=done?'Шкаф раскрыт.':
-    `Створок открыто: ${cs.doors.filter(d=>d.open>=1).length}/2 — ЛКМ по дверце и тяни к краю`;
+  $('lockStatus').textContent=done?'Двери раскрыты.':
+    `Открыто: ${cs.doors.filter(d=>d.open>=1).length}/2 — зажми ЛКМ на дверце и тяни ВНИЗ к себе`;
   if(done&&!cs.done){ cs.done=true;
     setTimeout(()=>{ $('lockPuzzle').classList.add('hidden');
       const cb=cs.onDone; cabState=null; state='play'; cb&&cb(); },350); }
 }
-function cabPos(e){ const r=$('lockCanvas').getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
-$('lockCanvas').addEventListener('mousedown',e=>{
+function cabPos(e){ const r=$('lockCanvas').getBoundingClientRect();
+  return {x:(e.clientX-r.left)*(300/r.width),y:(e.clientY-r.top)*(300/r.height)}; }
+function cabDown(e){
   if(!cabState) return;
   const p=cabPos(e);
-  const geo=cabGeom();
   for(let i=0;i<2;i++){
-    const d=geo[i];
-    if(p.x>d.x-4&&p.x<d.x+d.w+4&&p.y>25&&p.y<275&&cabState.doors[i].open<1){
-      cabState.drag={i,startX:p.x}; break;
+    const d=cabState.doors[i];
+    if(d.open>=1) continue;
+    const h=d.hit||{x1:i===0?40:150,x2:i===0?150:260,y1:20,y2:280};
+    if(p.x>h.x1&&p.x<h.x2&&p.y>h.y1&&p.y<h.y2){
+      cabState.drag={i,startX:p.x,startY:p.y}; $('lockCanvas').style.cursor='grabbing'; break;
     }
   }
-});
-function tickCabMove(e){
+}
+function cabMove(e){
   if(!cabState||!cabState.drag) return;
   const p=cabPos(e), d=cabState.drag;
-  const dx=p.x-d.startX;
-  const pull=d.i===0?-dx:dx; // тянем левую влево / правую вправо
-  cabState.doors[d.i].open=clamp(cabState.doors[d.i].open+Math.max(0,pull)*.006,0,1);
-  if(Math.abs(pull)>6&&Math.random()<.05){ SFX.cabinet(); noiseAlert(); }
+  const dx=p.x-d.startX, dy=p.y-d.startY;
+  const pull=dy+Math.abs(dx)*.35; // тянем вниз (и немного в свою сторону)
+  if(pull>0){
+    cabState.doors[d.i].open=clamp(cabState.doors[d.i].open+pull*.008,0,1);
+    d.startX=p.x; d.startY=p.y;
+    if(Math.random()<.06){ SFX.cabinet(); noiseAlert(); }
+  }
   drawCab();
+}
+function cabUp(e){
+  if(!cabState) return;
+  cabState.drag=null; $('lockCanvas').style.cursor='grab';
 }
 
 // ——— ботварь: оружие и одежда по всей больнице ———

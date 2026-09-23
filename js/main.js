@@ -24,6 +24,7 @@ let currentSlot=0;
 let whisperT=3, heartbeatT=0, spawnT=8, ambientT=0;
 let puzzleCb=null;
 let deathFade=0;
+let gameReady=false, loopStarted=false, menuWired=false;
 
 const P = { // параметры игрока
   hp:100,maxHp:100,st:100,san:100, speed:3.2, runSpeed:5.6, crouchSpeed:1.6,
@@ -36,6 +37,7 @@ const P = { // параметры игрока
 window.P=P;
 
 /* ================= UI ХЕЛПЕРЫ ================= */
+function safeCall(fn,label){ if(typeof fn!=='function') return; try{ fn(); }catch(err){ console.error('[MIŠUTKA] ошибка в "'+label+'":',err); } }
 function toast(msg,dur=3){ const t=$('toast'); t.textContent=msg; t.style.opacity=1;
   clearTimeout(toast._h); toast._h=setTimeout(()=>t.style.opacity=0,dur*1000); }
 window.__toast=toast;
@@ -156,6 +158,10 @@ function addPickup(item,x,y,z,n=1){
 function invCapacity(){ return P.worn.pants==='pants_cargo'?24:20; }
 function giveItem(item,n=1){
   const def=ITEMS[item]; if(!def) return;
+  if(['use','wear:chest','wear:pants','wear:head','wear:face','wear:ear','hand'].includes(def.slot)){
+    let cnt=0; for(const s of P.inv) cnt+=s.n;
+    if(cnt>=invCapacity()){ toast('Рюкзак набит — освободи место в инвентаре [I].'); return; }
+  }
   if(def.slot==='ammoBelt'||['ammo','shells','mag357','battery'].includes(item)){
     if(item==='battery'){ flashCharge=Math.min(100,flashCharge+50); toast('Батарейка вставлена в фонарь.'); }
     else if(item==='ammo'){ P.ammo.pistol+=n; toast(`+${n} патронов 9мм`); }
@@ -208,18 +214,23 @@ function useSelected(){
   const i=window.__selInv; if(i===undefined||!P.inv[i]) return;
   const s=P.inv[i], it=ITEMS[s.item];
   if(it.slot==='use'){
+    if(!it.hp&&!it.san){ toast('Это нельзя использовать.'); return; }
+    if(it.hp&&P.hp>=P.maxHp&&!it.san){ toast('Ты цел(а). Прибереги.'); return; }
+    if(it.san&&P.san>=100&&!it.hp){ toast('Голова ясная. Таблетки подождут.'); return; }
     if(it.hp){ P.hp=Math.min(P.maxHp,P.hp+it.hp); toast(it.name+' применён'); }
     if(it.san){ P.san=Math.min(100,P.san+it.san); toast('Ты дышешь ровно. Рассудок +'+it.san); }
     s.n--; if(s.n<=0) P.inv.splice(i,1);
   } else if(it.slot.startsWith('wear')){
     const slot=it.slot.split(':')[1];
+    if(P.worn[slot]===s.item){ toast('Уже надето.'); return; }
     if(P.worn[slot]){ P.inv.push({item:P.worn[slot],n:1}); }
     P.worn[slot]=s.item; s.n--; if(s.n<=0) P.inv.splice(i,1);
     applyWorn(); toast('Надето: '+it.name);
   } else if(it.slot==='hand'){
+    if(P.worn.feet==='boots') P.st=clamp(P.st+10,0,100);
     selectWeapon(P.weapons.indexOf(s.item)>=0?P.weapons.indexOf(s.item):0);
     s.n--; if(s.n<=0) P.inv.splice(i,1);
-  }
+  } else { toast('Этот предмет нельзя использовать напрямую.'); return; }
   window.__selInv=undefined;
   renderInventory(); updateHUD();
 }
@@ -288,13 +299,20 @@ function showNote(note){
 function closeNote(){ $('noteModal').classList.add('hidden'); state='play'; lockPointer(); spawnNotes(); }
 
 /* ================= ПРОГРЕСС СЮЖЕТА ================= */
+function updateObjective(){
+  const n=P.notesFound;
+  if(n>=6&&mergeDone==='done'&&!endingShown) setObjective(OBJECTIVES[7]);
+  else if(n>=6) setObjective(OBJECTIVES[6]);
+  else if(n>=5) setObjective(OBJECTIVES[5]);
+  else if(n>=4) setObjective(OBJECTIVES[4]);
+  else if(n>=3) setObjective(OBJECTIVES[3]);
+  else if(n>=2) setObjective(OBJECTIVES[2]);
+  else if(n>=1) setObjective(OBJECTIVES[1]);
+  else setObjective(OBJECTIVES[0]);
+}
 function checkProgress(){
   const n=P.notesFound;
-  if(n>=1) setObjective(OBJECTIVES[1]);
-  if(n>=2) setObjective(OBJECTIVES[2]);
-  if(n>=3) setObjective(OBJECTIVES[3]);
-  if(n>=4) setObjective(OBJECTIVES[4]);
-  if(n>=5) setObjective(OBJECTIVES[5]);
+  updateObjective();
   if(n>=6 && !mergeDone){ triggerMerge(); }
 }
 function triggerMerge(){
@@ -340,7 +358,7 @@ function spawnGhost(forceType){
 /* ================= БОЙ ================= */
 function attackMelee(){
   if(P.attackCd>0) return;
-  const w=P.weapons[currentSlot]; const it=ITEMS[w];
+  const w=P.weapons[currentSlot]; const it=ITEMS[w]||ITEMS.fists;
   P.attackCd = (w==='fists')?.45:(w==='baton'?.8:(w==='katana'?.6:.55));
   P.st=clamp(P.st-6,0,100);
   handItems.swing=1;
@@ -350,12 +368,12 @@ function attackMelee(){
   for(const m of monsters){
     if(m.dead) continue;
     const d=m.distTo(P.pos);
-    if(d<reach){
+    if(d<reach+ (m.isBoss?.5:0)){
       const ang=Math.abs(angleDiff(Math.atan2(m.pos.x-P.pos.x,m.pos.z-P.pos.z),Math.atan2(-Math.sin(yaw),-Math.cos(yaw))));
-      if(ang<.9){ hurtMonster(m,dmg,w==='fists'?.15:.35); hitAny=true; }
+      if(ang<1.0){ hurtMonster(m,dmg,w==='fists'?.15:.35); hitAny=true; }
     }
   }
-  if(hitAny) SFX.hit();
+  if(hitAny) SFX.hit(); else if(w==='flashlight'||!it.dmg){} 
 }
 function angleDiff(a,b){ let d=a-b; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return d; }
 function shoot(){
@@ -592,7 +610,7 @@ function tryInteract(){
   if(o.type==='note'){ showNote(o.note); return; }
   if(o.type==='container'){ interactContainer(o); return; }
   if(o.type==='door'){ interactDoor(o); return; }
-  if(o.type==='lever'){ if(!o.used){ o.used=true; o.stick.rotation.z=-Math.PI/3; SFX.pluck(); o.cb&&o.cb(); } return; }
+  if(o.type==='lever'){ if(!o.used){ o.used=true; o.stick.rotation.z=-Math.PI/3; SFX.pluck(); safeCall(o.cb,'рычаг'); } return; }
 }
 function findTarget(){
   let best=null,bd=2.4;
@@ -607,12 +625,12 @@ function findTarget(){
 }
 function interactContainer(cont){
   if(cont.locked&&!cont.unlocked){
-    toast('Взламывай замок: крути колесо мыши над штифтами.');
-    startLockPuzzle(()=>{ cont.unlocked=true; cont.locked=false; openContainerAnim(cont); },null);
+    toast('Заперто. Ломай замок [ЛКМ] или вскрой затычкой-отмычкой [2].');
+    openWithPick(cont,false);
     return;
   }
   if(cont.opened){ if(!cont.shown&&cont.contents.length) revealContents(cont); return; }
-  openContainerAnim(cont);
+  startCabinetGame(cont,()=>openContainerAnim(cont));
 }
 function openContainerAnim(cont){
   cont.animating=true; cont.searchAnim=0; state='searching';
@@ -723,7 +741,19 @@ function updateCutscene(dt){
   pos.needsUpdate=true;
   csRoom.userData.lamp.intensity=1.4+Math.sin(csT*17)*.15*(Math.random()<.05?3:0);
   renderer.render(csScene,csCam);
-  if(csT>steps[steps.length-1].t&&state==='cut'){ /* ждём клика */ }
+  if(csT>CUTSCENE[CUTSCENE.length-1].t+1.5&&state==='cut'){ endCutscene(); }
+}
+function endCutscene(){
+  if(state!=='cut') return;
+  state='play';
+  $('cutscene').classList.add('hidden');
+  $('cineBars').classList.add('hidden');
+  $('hud').classList.remove('hidden');
+  setObjective(OBJECTIVES[0]);
+  toast('Палата №4. Осмотрись. [E] — взаимодействовать. F — фонарь.',6);
+  SFX.startAmbience();
+  lockPointer();
+  if(!loopRunning){ loopRunning=true; loop(); }
 }
 
 /* ================= ФИНАЛ ================= */
@@ -972,7 +1002,6 @@ function updateWorld(dt){
     else if(o.type==='lever') txt+=o.prompt;
     pr.textContent=txt;
   } else pr.classList.add('hidden');
-  // перезарядка авто при пустом магазине
   // амбиент-звуки
   ambientT-=dt;
   if(ambientT<=0){ ambientT=rand(8,18);
@@ -980,9 +1009,12 @@ function updateWorld(dt){
 }
 
 /* ================= ГЛАВНЫЙ ЦИКЛ ================= */
+let loopRunning=false;
+function startLoop(){ if(!loopRunning){ loopRunning=true; requestAnimationFrame(loop); } }
 function loop(){
   requestAnimationFrame(loop);
   const dt=Math.min(.05,clock.getDelta());
+  if(state==='cut'){ updateCutscene(dt); return; }
   if(state==='door') tickDoor(dt);
   gameTime+=dt;
   if(state==='play'||state==='inv'||state==='note'||state==='searching'||state==='puzzle'){
@@ -992,68 +1024,267 @@ function loop(){
   if(state==='dead'){ deathFade+=dt; camera.position.y=Math.max(.3,P.y-deathFade*.5); }
   renderer.render(scene,camera);
 }
+// страховка от «бесконечного» rAF при ошибке в кадре — цикл не должен умирать молча
+addEventListener('unhandledrejection',ev=>console.error('promise',ev.reason));
 
-/* ================= СТАРТ ================= */
+/* ================= СТАРТ / БОТВАРЬ / ОТКРЫТИЕ ШКАФОВ ================= */
+const BOOT={ step:'init', err:null };
+window.__BOOT=BOOT;
+function bootFail(where,err){
+  BOOT.err=(where+': '+(err&&err.message?err.message:String(err)));
+  console.error('[МИШУТКА] ошибка загрузки',where,err);
+  try{
+    let e=$('bootErr');
+    if(!e){ e=document.createElement('div'); e.id='bootErr';
+      e.style.cssText='position:fixed;left:50%;top:50%;transform:translateX(-50%);z-index:999;color:#c8b060;background:rgba(5,4,2,.92);border:1px solid #5a4a28;padding:18px 26px;font:14px Georgia;max-width:70vw;text-align:center;line-height:1.7;display:none}';
+      document.body.appendChild(e); }
+    e.textContent='Сбой в больнице («'+where+'»): '+(err&&err.message?err.message:err)+'. Игра попытается продолжить.';
+    e.style.display='block'; clearTimeout(bootFail._h);
+    bootFail._h=setTimeout(()=>e.style.display='none',6000);
+  }catch(_e){}
+}
+function showMenuError(msg){
+  const b=$('btnStart'); if(!b) return;
+  b.disabled=false; b.textContent='► НАЧАТЬ СМЕНУ ПАМЯТИ';
+  let e=$('menuErr');
+  if(!e){ e=document.createElement('div'); e.id='menuErr';
+    e.style.cssText='color:#c05050;margin-top:14px;font-size:13px;max-width:60vw;line-height:1.6';
+    b.parentNode.insertBefore(e,b.nextSibling); }
+  e.textContent=msg;
+}
+
+// ——— «затычка»: отпирать запертые двери/шкафы без взлома замка ———
+function useEarplugPick(door,cont){
+  const i=P.inv.findIndex(s=>s.item==='earplug_pick');
+  if(i<0){ toast('Нужна «затычка-отмычка». Ищи в шкафчиках и тумбочках.'); return false; }
+  const s=P.inv[i];
+  if(Math.random()<.4){
+    if(--s.n<=0) P.inv.splice(i,1);
+    toast('Затычка сломалась в замке!'); SFX.pluck(); renderInventory(); updateHUD();
+    return false;
+  }
+  if(--s.n<=0) P.inv.splice(i,1);
+  renderInventory(); updateHUD();
+  return true;
+}
+function openWithPick(target,isDoor){
+  startLockPuzzle(()=>{
+    if(isDoor){ target.locked=false; openDoor(target); SFX.doorOpen(); toast('Замок щёлкнул.'); }
+    else { target.unlocked=true; target.locked=false; openContainerAnim(target); }
+  },()=>{
+    if(useEarplugPick(isDoor?target:null,isDoor?null:target)){
+      toast('Ты вскрываешь замок затычкой-отмычкой...',3);
+      setTimeout(()=>{
+        if(isDoor){ target.locked=false; openDoor(target); }
+        else { target.unlocked=true; target.locked=false; openContainerAnim(target); }
+        SFX.unlock();
+      },500);
+    }
+  });
+}
+
+// ——— мини-игра открытия шкафа: держи ЛКМ на дверце и тяни к краю ———
+let cabState=null;
+function startCabinetGame(cont,onDone){
+  state='puzzle'; document.exitPointerLock?.();
+  $('lockPuzzle').classList.remove('hidden');
+  const h3=$('lockPuzzle').querySelector('h3'); if(h3) h3.textContent='ОБЫСК: '+(cont.label||'ШКАФЧИК');
+  const hint=$('lockPuzzle').querySelector('.hint');
+  if(hint) hint.textContent='Зажми ЛКМ на дверце и ТЯНИ её к краю шкафа: левую — влево, правую — вправо. Раскрывай ровно: резко дёрнешь — заскрипит на весь коридор.';
+  cabState={ cont, doors:[{open:0},{open:0}], drag:null, onDone, done:false };
+  lockState=null; puzzleCb=null;
+  drawCab();
+}
+function cabGeom(){
+  // геометрия двух створок для отрисовки и попаданий (створки раздвигаются к краям)
+  const out=[];
+  for(let i=0;i<2;i++){
+    const o=cabState.doors[i].open;
+    const w=105*(1-.86*o);            // ширина видимой створки сужается при открытии
+    const x=i===0?40:260-w;           // петля у левого/правого края шкафа
+    out.push({x,w});
+  }
+  return out;
+}
+function drawCab(){
+  const cv=$('lockCanvas'),g=cv.getContext('2d');
+  const cs=cabState; if(!cs) return;
+  g.fillStyle='#0a0806'; g.fillRect(0,0,300,300);
+  // нутро шкафа
+  g.fillStyle='#17130c'; g.fillRect(40,25,220,250);
+  g.strokeStyle='#2a2418'; g.lineWidth=2;
+  for(const sy of [95,170]){ g.beginPath(); g.moveTo(45,sy); g.lineTo(255,sy); g.stroke(); }
+  // содержимое проступает по мере открытия
+  const o=(cs.doors[0].open+cs.doors[1].open)/2;
+  if(o>.15&&cs.cont.contents&&cs.cont.contents.length){
+    g.fillStyle=`rgba(216,203,164,${Math.min(.9,(o-.1)*1.3)})`;
+    g.font='italic 15px Georgia'; g.textAlign='center';
+    g.fillText('внутри что-то есть…',150,150);
+  } else if(o>.15){
+    g.fillStyle=`rgba(150,140,120,${Math.min(.7,(o-.1))})`;
+    g.font='italic 15px Georgia'; g.textAlign='center';
+    g.fillText('пусто…',150,150);
+  }
+  // створки
+  const geo=cabGeom();
+  for(let i=0;i<2;i++){
+    const d=geo[i];
+    const grd=g.createLinearGradient(d.x,0,d.x+d.w,0);
+    grd.addColorStop(0,'#4a4034'); grd.addColorStop(.5,'#332c20'); grd.addColorStop(1,'#4a4034');
+    g.fillStyle=grd; g.fillRect(d.x,25,d.w,250);
+    g.strokeStyle='#5a4a30'; g.lineWidth=2; g.strokeRect(d.x,25,d.w,250);
+    // ручка у свободного края
+    const kx=i===0?d.x+d.w-9:d.x+9;
+    g.fillStyle='#c8a24a'; g.beginPath(); g.arc(kx,150,5,0,7); g.fill();
+  }
+  const done=cs.doors.every(d=>d.open>=1);
+  $('lockStatus').textContent=done?'Шкаф раскрыт.':
+    `Створок открыто: ${cs.doors.filter(d=>d.open>=1).length}/2 — ЛКМ по дверце и тяни к краю`;
+  if(done&&!cs.done){ cs.done=true;
+    setTimeout(()=>{ $('lockPuzzle').classList.add('hidden');
+      const cb=cs.onDone; cabState=null; state='play'; cb&&cb(); },350); }
+}
+function cabPos(e){ const r=$('lockCanvas').getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
+$('lockCanvas').addEventListener('mousedown',e=>{
+  if(!cabState) return;
+  const p=cabPos(e);
+  const geo=cabGeom();
+  for(let i=0;i<2;i++){
+    const d=geo[i];
+    if(p.x>d.x-4&&p.x<d.x+d.w+4&&p.y>25&&p.y<275&&cabState.doors[i].open<1){
+      cabState.drag={i,startX:p.x}; break;
+    }
+  }
+});
+function tickCabMove(e){
+  if(!cabState||!cabState.drag) return;
+  const p=cabPos(e), d=cabState.drag;
+  const dx=p.x-d.startX;
+  const pull=d.i===0?-dx:dx; // тянем левую влево / правую вправо
+  cabState.doors[d.i].open=clamp(cabState.doors[d.i].open+Math.max(0,pull)*.006,0,1);
+  if(Math.abs(pull)>6&&Math.random()<.05){ SFX.cabinet(); noiseAlert(); }
+  drawCab();
+}
+
+// ——— ботварь: оружие и одежда по всей больнице ———
+function stockWorld(){
+  const find=(pred)=>W.interactables.find(pred);
+  const add=(item,n,x,z)=>addPickup(item,x,.5,z,n||1);
+  // пистолет уже в шкафчике приёмной; добавим обвесы и одежду
+  let c=find(o=>o.type==='container'&&o.kind==='locker'&&Math.abs(o.x-(-19))<.1&&Math.abs(o.z-(-1.15))<.1);
+  if(c) c.contents.push({item:'baton',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='nightstand'&&Math.abs(o.x-3)<.1&&Math.abs(o.z-1.15)<.1);
+  if(c) c.contents.push({item:'earplug_pick',n:2});
+  c=find(o=>o.type==='container'&&o.kind==='locker'&&Math.abs(o.x-(-25.5))<.1&&Math.abs(o.z-5.4)<.1);
+  if(c) c.contents.push({item:'ammo',n:6},{item:'earplug_pick',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-(-25.5))<.1&&Math.abs(o.z+5.4)<.1);
+  if(c) c.contents.push({item:'coat_winter',n:1}); // уже есть пальто — пусть будет ещё аптечка
+  if(c) c.contents.push({item:'medkit',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='locker'&&Math.abs(o.x-(-24.8))<.1&&Math.abs(o.z-(-13.4))<.1);
+  if(c) c.contents.push({item:'shells',n:4});
+  c=find(o=>o.type==='container'&&o.kind==='locker'&&Math.abs(o.x-5.2)<.1&&Math.abs(o.z-(-11.3))<.1);
+  if(c) c.contents.push({item:'earplug_pick',n:2},{item:'bandage',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-15.2)<.1&&Math.abs(o.z-(-4))<.1);
+  if(c) c.contents.push({item:'pants_cargo',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='locker'&&Math.abs(o.x-24.8)<.1&&Math.abs(o.z-(-5))<.1);
+  if(c) c.contents.push({item:'shotgun',n:1}); // дробовик остаётся только здесь
+  if(c) c.contents.push({item:'shells',n:8});
+  c=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-31.2)<.1&&Math.abs(o.z-5)<.1);
+  if(c) c.contents.push({item:'medkit',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-22)<.1&&Math.abs(o.z-(-7.6))<.1);
+  if(c) c.contents.push({item:'armor',n:1});
+  c=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-17.5)<.1&&Math.abs(o.z-(-8.4))<.1);
+  if(c) c.contents.push({item:'earplug_pick',n:2});
+  c=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-31.2)<.1&&Math.abs(o.z-7.5)<.1);
+  if(c) c.contents.push({item:'earplug_pick',n:2});
+  // палаты A — шкафчики у кроватей
+  [[-13.65],[-9.65],[-5.65]].forEach((row,i)=>{
+    const cc=find(o=>o.type==='container'&&o.kind==='locker'&&Math.abs(o.x-row[0])<.2&&o.z>1.9&&o.z<2.4);
+    if(cc){ cc.contents.push([{item:'pill',n:1},{item:'bandage',n:2},{item:'battery',n:1}][i]); }
+  });
+  const nn=find(o=>o.type==='container'&&o.kind==='nightstand'&&Math.abs(o.x-(-12))<.6&&o.z>8);
+  if(nn) nn.contents.push({item:'knife',n:1});
+  // южные палаты
+  const cc2=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-(-15.6))<.3&&o.z<-8);
+  if(cc2) cc2.contents.push({item:'earplug_pick',n:1},{item:'pill',n:1});
+  const cc3=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-(-11.6))<.3&&o.z<-8);
+  if(cc3) cc3.contents.push({item:'sneakers',n:1});
+  const cc4=find(o=>o.type==='container'&&o.kind==='cabinet'&&Math.abs(o.x-(-7.6))<.3&&o.z<-8);
+  if(cc4) cc4.contents.push({item:'boots',n:1});
+  // напольные подборки (часть перенесём в контейнеры — оставим атмосферные редкие)
+  add('battery',-2.5,.35,2.2,1);
+  add('ammo',10.5,.78,-7.2,6);
+  add('mag357',25.2,.5,1.2,6);
+  add('shells',30.5,.85,-3,8);
+  add('revolver',24.6,.5,-.5);
+  add('katana',29.4,.6,12.5);
+  add('axe',-30.5,.5,-12.5);
+  add('pipe',-13.5,.5,-6.5);
+  add('gasmask',-12,.5,-5.2);
+  add('beanie',13.5,1.0,-9.5);
+  add('cap_nurse',-28.5,1.2,-2.5);
+  add('medkit',2.5,.5,7.5);
+  add('pill',-16.5,.5,6.5);
+}
+
 function newGame(){
+  BOOT.step='three';
   initThree(); initFlashlight();
+  BOOT.step='world';
   buildWorld(scene);
-  bindHooksWorld();
   player={pos:P.pos,flashOn:true,aimAt:()=>false};
   initHands();
-  // стартовый лут в палате: фонарь на тумбочке у кровати старта
+  BOOT.step='items';
   addPickup('flashlight',-1.2,.8,8.0);
   addPickup('pill',1.2,.5,7.2);
-  // ключ морга — в шкафчике холла Б (обычный ключ)
   placeSpecialKeys();
-  // спрятанная записка в морге — в locker с index
-  NOTES.forEach(n=>{ if(n.hiddenIn){ /* выдаётся при обыске контейнера рядом с моргом */ } });
+  stockWorld();
   hookMorgNote();
   spawnNotes();
   applyWorn(); updateCharacterSvg();
   updateHUD();
-  // первый призрак через минуту
-  setTimeout(()=>{ if(state==='play') spawnGhost('patient4'); },45000);
-  gameReady=true;
+  BOOT.step='ready'; gameReady=true; BOOT.done=true;
 }
-let gameReady=false, loopStarted=false;
-const _origEndCut=endCutscene;
-endCutscene=function(){ _origEndCut(); if(gameReady&&!loopStarted){ loopStarted=true; loop(); } };
 function bindHooksWorld(){ /* toast уже глобален */ }
 function placeSpecialKeys(){
-  // обычный ключ: в шкафчике холла Б — добавим отдельный pickup внутрь locker? проще: pickup рядом
   addPickup('key_normal',5.2,1.05,-10.6);
-  // патроны дробовика и револьвер + сам револьвер в операционной на столике
-  addPickup('shells',30.5,.85,-3,8);
-  addPickup('revolver',24.6,.5,-.5);
-  addPickup('mag357',25.2,.5,1,6);
-  addPickup('katana',29.4,.6,12.5);
-  addPickup('axe',-30.5,.5,-12.5);
-  addPickup('pipe',-13.5,.5,-6.5);
-  addPickup('gasmask',-12,.5,-5.2);
-  addPickup('boots',-8,.4,-2.4);
-  addPickup('beanie',13.5,1.0,-9.5);
-  addPickup('cap_nurse',-28.5,1.2,-2.5);
-  addPickup('pants_gown',-10.5,.5,7.9);
-  addPickup('sneakers',-6.5,.4,-5);
-  addPickup('medkit',2.5,.5,7.5);
-  addPickup('pill',-16.5,.5,6.5);
-  addPickup('ammo',-2.5,.5,2.2,8);
-  addPickup('shells',28.7,1.0,4.5,6);
-  addPickup('mag357',10.5,.78,-7.2,6);
 }
 function hookMorgNote(){
   // записка №3 спрятана в locker морга: переопределим contents
   const morgLocker=W.interactables.find(o=>o.type==='container'&&o.kind==='locker'&&o.x<-24&&o.z<-12);
   if(morgLocker){ morgLocker.contents.push({item:'note_n3',n:1}); }
 }
-$('btnStart').onclick=()=>{
-  SFX.init(); SFX.resume();
-  $('menu').classList.add('hidden');
-  $('cutscene').classList.remove('hidden');
-  $('cineBars').classList.remove('hidden');
-  state='cut';
-  if(!csScene) buildCutscene();
-  csT=0; csShown=-1;
-  if(!loopStarted){ loopStarted=true; newGame(); }
-};
-let loopStarted=false;
+function wireMenu(){
+  if(menuWired) return; menuWired=true;
+  const b=$('btnStart');
+  b.onclick=()=>{
+    if(b.disabled) return;
+    b.disabled=true; b.textContent='…загружаемся…';
+    try{
+      SFX.init(); SFX.resume();
+    }catch(e){ console.warn('звук недоступен',e); }
+    try{
+      $('menu').classList.add('hidden');
+      $('cutscene').classList.remove('hidden');
+      $('cineBars').classList.remove('hidden');
+      state='cut';
+      if(!csScene) buildCutscene();
+      csT=0; csShown=-1;
+      if(!loopStarted){ loopStarted=true; newGame(); }
+      startLoop();
+    }catch(e){
+      bootFail('старт',e);
+      $('menu').classList.remove('hidden');
+      $('cutscene').classList.add('hidden');
+      $('cineBars').classList.add('hidden');
+      state='menu';
+      showMenuError('Что-то сломалось при загрузке ('+(e&&e.message?e.message:e)+'). Попробуй ещё раз.');
+      return;
+    }
+    b.disabled=false; b.textContent='► НАЧАТЬ СМЕНУ ПАМЯТИ';
+  };
+  b.onmouseenter=()=>SFX.puzzleTick&&safeCall(()=>SFX.puzzleTick(true),'snd');
+}
+// страховка: если модуль загрузился криво — кнопка всё равно оживает с подсказкой
+try{ wireMenu(); }catch(e){ bootFail('wireMenu',e); showMenuError('Не удалось подготовить меню: '+(e&&e.message||e)); }
+addEventListener('error',ev=>{ console.error('window error',ev.error||ev.message); });
